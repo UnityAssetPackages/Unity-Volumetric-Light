@@ -55,7 +55,7 @@ Shader "Hidden/BilateralBlur"
         #define QUARTER_RES_BLUR_KERNEL_SIZE 6
         //--------------------------------------------------------------------------------------------
 
-		#define PI 3.1415927f
+		#define PI 3.14159265359f
 
 #include "UnityCG.cginc"	
 
@@ -164,16 +164,36 @@ Shader "Hidden/BilateralBlur"
 			float4 depthDiff = abs(lowResDepth - highResDepth);
 
 			float accumDiff = dot(depthDiff, float4(1, 1, 1, 1));
-            
+
+			[branch]
+			if (accumDiff < threshold) // small error, not an edge -> use bilinear filter
+			{
+				return loColor.Sample(linearSampler, input.uv);
+			}
 			// find nearest sample
-			float3 nearestUv = float3(input.uv00, depthDiff[0]);
+			float minDepthDiff = depthDiff[0];
+			float2 nearestUv = input.uv00;
 
-			nearestUv = lerp(nearestUv, float3(input.uv10, depthDiff[1]), step(depthDiff[1], nearestUv.z));
-			nearestUv = lerp(nearestUv, float3(input.uv01, depthDiff[2]), step(depthDiff[2], nearestUv.z));
-			nearestUv = lerp(nearestUv, float3(input.uv11, depthDiff[3]), step(depthDiff[3], nearestUv.z));
-            return lerp(loColor.Sample(pointSampler, nearestUv.xy),loColor.Sample(linearSampler, input.uv) ,step(accumDiff,threshold));
+			if (depthDiff[1] < minDepthDiff)
+			{
+				nearestUv = input.uv10;
+				minDepthDiff = depthDiff[1];
+			}
+
+			if (depthDiff[2] < minDepthDiff)
+			{
+				nearestUv = input.uv01;
+				minDepthDiff = depthDiff[2];
+			}
+
+			if (depthDiff[3] < minDepthDiff)
+			{
+				nearestUv = input.uv11;
+				minDepthDiff = depthDiff[3];
+			}
+
+            return loColor.Sample(pointSampler, nearestUv);
 		}
-
 		//-----------------------------------------------------------------------------------------
 		// DownsampleDepth
 		//-----------------------------------------------------------------------------------------
@@ -201,18 +221,19 @@ Shader "Hidden/BilateralBlur"
 
 			// chessboard pattern
 			int2 position = input.vertex.xy % 2;
-			int index = (position.x + position.y) - 1;
-			return lerp(minDepth, maxDepth, abs(index));
+			int index = position.x + position.y;
+			return index == 1 ? minDepth : maxDepth;
 #endif
 		}
 		
 		//-----------------------------------------------------------------------------------------
 		// GaussianWeight
 		//-----------------------------------------------------------------------------------------
-		float GaussianWeight(float offset, float deviation)
+		float GaussianWeight(float offset, float2 deviation2)
 		{
-			float weight = 1.0f / sqrt(2.0f * PI * deviation * deviation);
-			weight *= exp(-(offset * offset) / (2.0f * deviation * deviation));
+			
+			float weight = 1.0f / sqrt(deviation2.y);
+			weight *= exp(-(offset * offset) / (deviation2.x));
 			return weight;
 		}
 
@@ -222,8 +243,9 @@ Shader "Hidden/BilateralBlur"
 		float4 BilateralBlur(v2f input, int2 direction, Texture2D depth, SamplerState depthSampler, const int kernelRadius, float2 pixelSize)
 		{
 			//const float deviation = kernelRadius / 2.5;
-			const float deviation = kernelRadius / GAUSS_BLUR_DEVIATION; // make it really strong
-
+			const float dev = kernelRadius / GAUSS_BLUR_DEVIATION; // make it really strong
+			const float dev2 = dev * dev * 2;
+			const float2 deviation = float2(dev2, dev2 * PI);
 			float2 uv = input.uv;
 			float4 centerColor = _MainTex.Sample(sampler_MainTex, uv);
 			float3 color = centerColor.xyz;
@@ -285,7 +307,7 @@ Shader "Hidden/BilateralBlur"
 			#pragma fragment horizontalFrag
             #pragma target 4.0
 			
-			fixed4 horizontalFrag(v2f input) : SV_Target
+			float4 horizontalFrag(v2f input) : SV_Target
 			{
                 return BilateralBlur(input, int2(1, 0), _CameraDepthTexture, sampler_CameraDepthTexture, FULL_RES_BLUR_KERNEL_SIZE, _CameraDepthTexture_TexelSize.xy);
 			}
@@ -301,7 +323,7 @@ Shader "Hidden/BilateralBlur"
 			#pragma fragment verticalFrag
             #pragma target 4.0
 			
-			fixed4 verticalFrag(v2f input) : SV_Target
+			float4 verticalFrag(v2f input) : SV_Target
 			{
                 return BilateralBlur(input, int2(0, 1), _CameraDepthTexture, sampler_CameraDepthTexture, FULL_RES_BLUR_KERNEL_SIZE, _CameraDepthTexture_TexelSize.xy);
 			}
@@ -317,7 +339,7 @@ Shader "Hidden/BilateralBlur"
             #pragma fragment horizontalFrag
             #pragma target 4.0
 
-			fixed4 horizontalFrag(v2f input) : SV_Target
+			float4 horizontalFrag(v2f input) : SV_Target
 		{
             return BilateralBlur(input, int2(1, 0), _HalfResDepthBuffer, sampler_HalfResDepthBuffer, HALF_RES_BLUR_KERNEL_SIZE, _HalfResDepthBuffer_TexelSize.xy);
 		}
@@ -333,7 +355,7 @@ Shader "Hidden/BilateralBlur"
             #pragma fragment verticalFrag
             #pragma target 4.0
 
-			fixed4 verticalFrag(v2f input) : SV_Target
+			float4 verticalFrag(v2f input) : SV_Target
 		{
             return BilateralBlur(input, int2(0, 1), _HalfResDepthBuffer, sampler_HalfResDepthBuffer, HALF_RES_BLUR_KERNEL_SIZE, _HalfResDepthBuffer_TexelSize.xy);
 		}
@@ -435,7 +457,7 @@ Shader "Hidden/BilateralBlur"
             #pragma fragment horizontalFrag
             #pragma target 4.0
 
-			fixed4 horizontalFrag(v2f input) : SV_Target
+			float4 horizontalFrag(v2f input) : SV_Target
 			{
                 return BilateralBlur(input, int2(1, 0), _QuarterResDepthBuffer, sampler_QuarterResDepthBuffer, QUARTER_RES_BLUR_KERNEL_SIZE, _QuarterResDepthBuffer_TexelSize.xy);
 			}
@@ -451,7 +473,7 @@ Shader "Hidden/BilateralBlur"
             #pragma fragment verticalFrag
             #pragma target 4.0
 
-			fixed4 verticalFrag(v2f input) : SV_Target
+			float4 verticalFrag(v2f input) : SV_Target
 			{
                 return BilateralBlur(input, int2(0, 1), _QuarterResDepthBuffer, sampler_QuarterResDepthBuffer, QUARTER_RES_BLUR_KERNEL_SIZE, _QuarterResDepthBuffer_TexelSize.xy);
 			}

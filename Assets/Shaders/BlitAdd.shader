@@ -71,15 +71,16 @@ Shader "Hidden/BlitAdd"
 				return o;
 			}
 
-			fixed4 frag(v2f i) : SV_Target
+			float4 frag(v2f i) : SV_Target
 			{
 				float4 main = tex2D(_MainTex, i.texcoord);
 
 #if UNITY_UV_STARTS_AT_TOP
-				float stepSC = step(_Source_TexelSize.y, 0);
-				i.texcoord.y = lerp(i.texcoord.y, 1 - i.texcoord.y, stepSC);
+				if (_Source_TexelSize.y < 0)
+					i.texcoord.y = 1 - i.texcoord.y;
 #endif
 				float4 source = tex2D(_Source, i.texcoord);
+
 				source *= main.w;
 				source.xyz += main.xyz;
 				return source;

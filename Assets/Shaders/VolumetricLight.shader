@@ -105,15 +105,15 @@ Shader "Sandbox/VolumetricLight"
 		//-----------------------------------------------------------------------------------------
 		// GetCascadeWeights_SplitSpheres
 		//-----------------------------------------------------------------------------------------
-		inline fixed4 GetCascadeWeights_SplitSpheres(float3 wpos)
+		inline float4 GetCascadeWeights_SplitSpheres(float3 wpos)
 		{
 			float3 fromCenter0 = wpos.xyz - unity_ShadowSplitSpheres[0].xyz;
 			float3 fromCenter1 = wpos.xyz - unity_ShadowSplitSpheres[1].xyz;
 			float3 fromCenter2 = wpos.xyz - unity_ShadowSplitSpheres[2].xyz;
 			float3 fromCenter3 = wpos.xyz - unity_ShadowSplitSpheres[3].xyz;
-			float4 distances2 = float4(length(fromCenter0), length(fromCenter1), length(fromCenter2), length(fromCenter3));
+			float4 distances2 = float4(dot(fromCenter0, fromCenter0), dot(fromCenter1, fromCenter1), dot(fromCenter2, fromCenter2), dot(fromCenter3, fromCenter3));
 
-			fixed4 weights = float4(step(distances2 , unity_ShadowSplitSqRadii));
+			float4 weights = float4(distances2 < unity_ShadowSplitSqRadii);
 			weights.yzw = saturate(weights.yzw - weights.xyz);
 			return weights;
 		}
@@ -121,7 +121,7 @@ Shader "Sandbox/VolumetricLight"
 		//-----------------------------------------------------------------------------------------
 		// GetCascadeShadowCoord
 		//-----------------------------------------------------------------------------------------
-		inline float4 GetCascadeShadowCoord(float4 wpos, fixed4 cascadeWeights)
+		inline float4 GetCascadeShadowCoord(float4 wpos, float4 cascadeWeights)
 		{
 			float3 sc0 = mul(unity_WorldToShadow[0], wpos).xyz;
 			float3 sc1 = mul(unity_WorldToShadow[1], wpos).xyz;
@@ -141,7 +141,7 @@ Shader "Sandbox/VolumetricLight"
 		//-----------------------------------------------------------------------------------------
 		// GetLightAttenuation
 		//-----------------------------------------------------------------------------------------
-		inline float GetLightAttenuation(float3 wpos)
+		float GetLightAttenuation(float3 wpos)
 		{
 			float atten = 0;
 #if defined (DIRECTIONAL) || defined (DIRECTIONAL_COOKIE)
@@ -149,9 +149,10 @@ Shader "Sandbox/VolumetricLight"
 #if defined (SHADOWS_DEPTH)
 			// sample cascade shadow map
 			float4 cascadeWeights = GetCascadeWeights_SplitSpheres(wpos);
+			bool inside = dot(cascadeWeights, float4(1, 1, 1, 1)) < 4;
 			float4 samplePos = GetCascadeShadowCoord(float4(wpos, 1), cascadeWeights);
 
-			atten = UNITY_SAMPLE_SHADOW(_CascadeShadowMapTexture, samplePos.xyz);
+			atten = inside ? UNITY_SAMPLE_SHADOW(_CascadeShadowMapTexture, samplePos.xyz) : 1.0f;
 			atten = _LightShadowData.r + atten * (1 - _LightShadowData.r);
 			//atten = inside ? tex2Dproj(_ShadowMapTexture, float4((samplePos).xyz, 1)).r : 1.0f;
 #endif
@@ -165,7 +166,7 @@ Shader "Sandbox/VolumetricLight"
 			float4 uvCookie = mul(_MyLightMatrix0, float4(wpos, 1));
 			// negative bias because http://aras-p.info/blog/2010/01/07/screenspace-vs-mip-mapping/
 			atten = tex2Dbias(_LightTexture0, float4(uvCookie.xy / uvCookie.w, 0, -8)).w;
-			atten *= step(uvCookie.w, 0);
+			atten *= uvCookie.w < 0;
 			float att = dot(tolight, tolight) * _LightPos.w;
 			atten *= tex2D(_LightTextureB0, att.rr).UNITY_ATTEN_CHANNEL;
 
@@ -202,7 +203,7 @@ Shader "Sandbox/VolumetricLight"
         //-----------------------------------------------------------------------------------------
         // GetDensity
         //-----------------------------------------------------------------------------------------
-		inline float GetDensity(float3 wpos)
+		float GetDensity(float3 wpos)
 		{
             float density = 1;
 #ifdef NOISE
@@ -218,10 +219,7 @@ Shader "Sandbox/VolumetricLight"
 		//-----------------------------------------------------------------------------------------
 		// MieScattering
 		//-----------------------------------------------------------------------------------------
-		inline float MieScattering(float cosAngle, float4 g)
-		{
-            return g.w * (g.x / (pow(g.y - g.z * cosAngle, 1.5)));			
-		}
+		#define MieScattering(cosAngle, g) g.w * (g.x / (pow(g.y - g.z * cosAngle, 1.5)))
 
 		//-----------------------------------------------------------------------------------------
 		// RayMarch
@@ -235,7 +233,6 @@ Shader "Sandbox/VolumetricLight"
 			float2 interleavedPos = (fmod(floor(screenPos.xy), 8.0));
 			float offset = tex2D(_DitherTexture, interleavedPos / 8.0 + float2(0.5 / 8.0, 0.5 / 8.0)).w;
 #endif
-
 
 			float stepSize = rayLength / _SampleCount;
 			float3 step = rayDir * stepSize;
@@ -296,7 +293,7 @@ Shader "Sandbox/VolumetricLight"
 		//-----------------------------------------------------------------------------------------
 		// RayConeIntersect
 		//-----------------------------------------------------------------------------------------
-		inline float2 RayConeIntersect(in float3 f3ConeApex, in float3 f3ConeAxis, in float fCosAngle, in float3 f3RayStart, in float3 f3RayDir)
+		float2 RayConeIntersect(in float3 f3ConeApex, in float3 f3ConeAxis, in float fCosAngle, in float3 f3RayStart, in float3 f3RayDir)
 		{
 			float inf = 10000;
 			f3RayStart -= f3ConeApex;
@@ -311,25 +308,30 @@ Shader "Sandbox/VolumetricLight"
 			float C = c*c - e*fCosAngle;
 			float D = B*B - 4 * A*C;
 
-			float stepD = step(0,D);
-			D = sqrt(D);
-			float2 t = (-B + sign(A)*float2(-D, +D)) / (2 * A);
-			float2 b2IsCorrect = step(0, c + a * t) * step(0,t);
-			t = t * b2IsCorrect + (1 - b2IsCorrect) * (inf);
-
-			return lerp(inf, t, stepD);
+			if (D > 0)
+			{
+				D = sqrt(D);
+				float2 t = (-B + sign(A)*float2(-D, +D)) / (2 * A);
+				bool2 b2IsCorrect = c + a * t > 0 && t > 0;
+				t = t * b2IsCorrect + !b2IsCorrect * (inf);
+				return t;
+			}
+			else // no intersection
+				return inf;
 		}
 
 		//-----------------------------------------------------------------------------------------
 		// RayPlaneIntersect
 		//-----------------------------------------------------------------------------------------
-		inline float RayPlaneIntersect(in float3 planeNormal, in float planeD, in float3 rayOrigin, in float3 rayDir)
+		float RayPlaneIntersect(in float3 planeNormal, in float planeD, in float3 rayOrigin, in float3 rayDir)
 		{
 			float NdotD = dot(planeNormal, rayDir);
 			float NdotO = dot(planeNormal, rayOrigin);
 
 			float t = -(NdotO + planeD) / NdotD;
-			return lerp(t, 100000, step(t,0));
+			if (t < 0)
+				t = 100000;
+			return t;
 		}
 
 		ENDCG
@@ -360,7 +362,7 @@ Shader "Sandbox/VolumetricLight"
 			#endif
 						
 			
-			fixed4 fragPointInside(v2f i) : SV_Target
+			float4 fragPointInside(v2f i) : SV_Target
 			{	
 				float2 uv = i.uv.xy / i.uv.w;
 
@@ -408,7 +410,7 @@ Shader "Sandbox/VolumetricLight"
 #define SHADOWS_NATIVE
 #endif
 
-			fixed4 fragPointInside(v2f i) : SV_Target
+			float4 fragPointInside(v2f i) : SV_Target
 			{
 				float2 uv = i.uv.xy / i.uv.w;
 
@@ -455,7 +457,7 @@ Shader "Sandbox/VolumetricLight"
 			#pragma shader_feature POINT_COOKIE
 			#pragma shader_feature POINT
 
-			fixed4 fragPointOutside(v2f i) : SV_Target
+			float4 fragPointOutside(v2f i) : SV_Target
 			{
 				float2 uv = i.uv.xy / i.uv.w;
 
@@ -485,6 +487,7 @@ Shader "Sandbox/VolumetricLight"
 
 				rayStart = rayStart + rayDir * start;
 				rayLength = end - start;
+
 				return RayMarch(i.pos.xy, rayStart, rayDir, rayLength);
 			}
 			ENDCG
@@ -520,7 +523,7 @@ Shader "Sandbox/VolumetricLight"
 			float4 _ConeApex;
 			float _PlaneD;
 
-			fixed4 fragSpotOutside(v2f i) : SV_Target
+			float4 fragSpotOutside(v2f i) : SV_Target
 			{
 				float2 uv = i.uv.xy / i.uv.w;
 
@@ -586,6 +589,7 @@ Shader "Sandbox/VolumetricLight"
 			{
 				float4 vertex : POSITION;
 				float2 uv : TEXCOORD0;
+				uint vertexId : SV_VertexID;
 			};
 
 			struct PSInput
@@ -609,7 +613,7 @@ Shader "Sandbox/VolumetricLight"
 				return o;
 			}
 
-			fixed4 fragDir(PSInput i) : SV_Target
+			float4 fragDir(PSInput i) : SV_Target
 			{
 				float2 uv = i.uv.xy;
 				float depth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, uv);
@@ -624,10 +628,13 @@ Shader "Sandbox/VolumetricLight"
 				rayDir /= rayLength;
 
 				rayLength = min(rayLength, _MaxRayLength);
+
 				float4 color = RayMarch(i.pos.xy, rayStart, rayDir, rayLength);
 
-
-				color.w = lerp(color.w,lerp(color.w, 1, _VolumetricLight.w), step(0.999999, linearDepth));
+				if (linearDepth > 0.999999)
+				{
+					color.w = 1-_VolumetricLight.w + color.w * _VolumetricLight.w;
+				}
 				return color;
 			}
 			ENDCG
