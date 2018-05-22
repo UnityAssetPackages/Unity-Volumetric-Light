@@ -43,7 +43,7 @@ public class VolumetricLight : MonoBehaviour
     private CommandBuffer _cascadeShadowCommandBuffer;
 
 	public float intensity = 1;
-    [Range(1, 64)]
+    [Range(1, 256)]
     public int SampleCount = 8;
     [Range(0.0f, 1.0f)]
     public float ScatteringCoef = 0.5f;

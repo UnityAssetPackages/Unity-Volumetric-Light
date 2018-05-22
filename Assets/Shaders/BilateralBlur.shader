@@ -244,7 +244,7 @@ Shader "Hidden/BilateralBlur"
 			//const float deviation = kernelRadius / 2.5;
 			const float dev = kernelRadius / GAUSS_BLUR_DEVIATION; // make it really strong
 			const float dev2 = dev * dev * 2;
-			const float2 deviation = float2(dev2, 1.0f / sqrt(dev2 * PI));
+			const float2 deviation = float2(dev2, 1.0f / (dev2 * PI));
 			float2 uv = input.uv;
 			float4 centerColor = _MainTex.Sample(sampler_MainTex, uv);
 			float3 color = centerColor.xyz;
