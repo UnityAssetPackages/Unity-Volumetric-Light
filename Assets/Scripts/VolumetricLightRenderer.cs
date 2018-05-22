@@ -204,7 +204,7 @@ public class VolumetricLightRenderer : MonoBehaviour
 				_preLightPass.SetRenderTarget (_halfVolumeLightTexture);
 			};
 			onRenderImageAction = () => {
-				RenderTexture temp = RenderTexture.GetTemporary (_halfVolumeLightTexture.width, _halfVolumeLightTexture.height, 0, RenderTextureFormat.ARGBHalf);
+				RenderTexture temp = RenderTexture.GetTemporary (_halfVolumeLightTexture.width, _halfVolumeLightTexture.height, 0, RenderTextureFormat.ARGBFloat);
 				temp.filterMode = FilterMode.Bilinear;
 
 				// horizontal bilateral blur at half res
@@ -222,7 +222,7 @@ public class VolumetricLightRenderer : MonoBehaviour
 		{
 			onPreRenderAction = () => _preLightPass.SetRenderTarget(_volumeLightTexture);
 			onRenderImageAction = () => {
-				RenderTexture temp = RenderTexture.GetTemporary (_volumeLightTexture.width, _volumeLightTexture.height, 0, RenderTextureFormat.ARGBHalf);
+				RenderTexture temp = RenderTexture.GetTemporary (_volumeLightTexture.width, _volumeLightTexture.height, 0, RenderTextureFormat.ARGBFloat);
 				temp.filterMode = FilterMode.Bilinear;
 
 				// horizontal bilateral blur at full res
@@ -271,7 +271,7 @@ public class VolumetricLightRenderer : MonoBehaviour
         if (_volumeLightTexture != null)
             Destroy(_volumeLightTexture);
 
-        _volumeLightTexture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBHalf);
+        _volumeLightTexture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBFloat);
         _volumeLightTexture.name = "VolumeLightBuffer";
         _volumeLightTexture.filterMode = FilterMode.Bilinear;
 
@@ -282,7 +282,7 @@ public class VolumetricLightRenderer : MonoBehaviour
 
 		if (_currentResolution == VolumtericResolution.Half)
         {
-            _halfVolumeLightTexture = new RenderTexture(width / 2, height / 2, 0, RenderTextureFormat.ARGBHalf);
+            _halfVolumeLightTexture = new RenderTexture(width / 2, height / 2, 0, RenderTextureFormat.ARGBFloat);
             _halfVolumeLightTexture.name = "VolumeLightBufferHalf";
             _halfVolumeLightTexture.filterMode = FilterMode.Bilinear;
 
