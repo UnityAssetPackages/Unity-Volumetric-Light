@@ -161,7 +161,7 @@ Shader "Sandbox/VolumetricLight"
 #endif
 #elif defined (SPOT)	
 			float3 tolight = _LightPos.xyz - wpos;
-			half3 lightDir = normalize(tolight);
+			float3 lightDir = normalize(tolight);
 
 			float4 uvCookie = mul(_MyLightMatrix0, float4(wpos, 1));
 			// negative bias because http://aras-p.info/blog/2010/01/07/screenspace-vs-mip-mapping/
@@ -176,7 +176,7 @@ Shader "Sandbox/VolumetricLight"
 #endif
 #elif defined (POINT) || defined (POINT_COOKIE)
 			float3 tolight = wpos - _LightPos.xyz;
-			half3 lightDir = -normalize(tolight);
+			float3 lightDir = -normalize(tolight);
 
 			float att = dot(tolight, tolight) * _LightPos.w;
 			atten = tex2D(_LightTextureB0, att.rr).UNITY_ATTEN_CHANNEL;
@@ -184,7 +184,7 @@ Shader "Sandbox/VolumetricLight"
 			atten *= UnityDeferredComputeShadow(tolight, 0, float2(0, 0));
 
 #if defined (POINT_COOKIE)
-			atten *= texCUBEbias(_LightTexture0, float4(mul(_MyLightMatrix0, half4(wpos, 1)).xyz, -8)).w;
+			atten *= texCUBEbias(_LightTexture0, float4(mul(_MyLightMatrix0, float4(wpos, 1)).xyz, -8)).w;
 #endif //POINT_COOKIE
 #endif
 			return atten;
@@ -195,9 +195,7 @@ Shader "Sandbox/VolumetricLight"
         //-----------------------------------------------------------------------------------------
         inline void ApplyHeightFog(float3 wpos, inout float density)
         {
-#ifdef HEIGHT_FOG
             density *= exp(-(wpos.y + _HeightFog.x) * _HeightFog.y);
-#endif
         }
 
         //-----------------------------------------------------------------------------------------
@@ -211,8 +209,9 @@ Shader "Sandbox/VolumetricLight"
 			noise = saturate(noise - _NoiseData.z) * _NoiseData.y;
 			density = saturate(noise);
 #endif
+#ifdef HEIGHT_FOG
             ApplyHeightFog(wpos, density);
-
+#endif
             return density;
 		}        
 
@@ -243,25 +242,25 @@ Shader "Sandbox/VolumetricLight"
 
 			float cosAngle;
 #if defined (DIRECTIONAL) || defined (DIRECTIONAL_COOKIE)
-            float extinction = 0;
 			cosAngle = dot(_LightDir.xyz, -rayDir);
 #else
 			// we don't know about density between camera and light's volume, assume 0.5
-			float extinction = length(_WorldSpaceCameraPos - currentPosition) * _VolumetricLight.y * 0.5;
 #endif
 			[loop]
 			for (int i = 0; i < _SampleCount; ++i)
 			{
-				float atten = GetLightAttenuation(currentPosition);
-				float density = GetDensity(currentPosition);
-
-                float scattering = _VolumetricLight.x * stepSize * density;
-				extinction += _VolumetricLight.y * stepSize * density;// +scattering;
-
-				float4 light = atten * scattering * exp(-extinction);
-
+				float atten = 1;//GetLightAttenuation(currentPosition);
+				float4 light = atten;
+#ifdef NOISE
+#ifdef HEIGHT_FOG
+				light *= GetDensity(currentPosition);
+#endif
+#endif
 //#if PHASE_FUNCTOIN
 #if !defined (DIRECTIONAL) && !defined (DIRECTIONAL_COOKIE)
+			float extinction = -length(_WorldSpaceCameraPos - currentPosition) * 0.005;
+			extinction = exp(-extinction);
+				light *= extinction;
 				// phase functino for spot and point lights
                 float3 tolight = normalize(currentPosition - _LightPos.xyz);
                 cosAngle = dot(tolight, -rayDir);
@@ -269,7 +268,6 @@ Shader "Sandbox/VolumetricLight"
 #endif          
 //#endif
 				vlight += light;
-
 				currentPosition += step;				
 			}
 
@@ -283,7 +281,8 @@ Shader "Sandbox/VolumetricLight"
 
 			vlight = max(0, vlight);
 #if defined (DIRECTIONAL) || defined (DIRECTIONAL_COOKIE) // use "proper" out-scattering/absorption for dir light 
-			vlight.w = exp(-extinction);
+			vlight.w = 1;
+
 #else
             vlight.w = 0;
 #endif
@@ -631,7 +630,7 @@ Shader "Sandbox/VolumetricLight"
 
 				float4 color = RayMarch(i.pos.xy, rayStart, rayDir, rayLength);
 
-				if (linearDepth > 0.999999)
+				if (linearDepth > 0.9999)
 				{
 					color.w = 1-_VolumetricLight.w + color.w * _VolumetricLight.w;
 				}

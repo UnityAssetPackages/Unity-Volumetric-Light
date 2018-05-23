@@ -46,10 +46,6 @@ public class VolumetricLight : MonoBehaviour
     [Range(1, 256)]
     public int SampleCount = 8;
     [Range(0.0f, 1.0f)]
-    public float ScatteringCoef = 0.5f;
-    [Range(0.0f, 0.1f)]
-    public float ExtinctionCoef = 0.01f;
-    [Range(0.0f, 1.0f)]
     public float SkyboxExtinctionCoef = 0.9f;
     [Range(0.0f, 0.999f)]
     public float MieG = 0.1f;
@@ -203,7 +199,7 @@ public class VolumetricLight : MonoBehaviour
 		_material.SetVector(_NoiseVelocity, new Vector4(NoiseVelocity.x, NoiseVelocity.y) * NoiseScale);
 		_material.SetVector(_NoiseData, new Vector4(NoiseScale, NoiseIntensity, NoiseIntensityOffset));
 		_material.SetVector(_MieG, new Vector4(1 - (MieG * MieG), 1 + (MieG * MieG), 2 * MieG, 1.0f / (4.0f * Mathf.PI)));
-		_material.SetVector(_VolumetricLight, new Vector4(ScatteringCoef, ExtinctionCoef, _light.range, 1.0f - SkyboxExtinctionCoef));
+		_material.SetVector(_VolumetricLight, new Vector4(0, 0, _light.range, 1.0f - SkyboxExtinctionCoef));
 		_material.SetTexture(_CameraDepthTexture, renderer.volumeDepthTexture);
 		_material.SetFloat(_ZTest, (int)UnityEngine.Rendering.CompareFunction.Always);
 		if (HeightFog)
@@ -421,10 +417,6 @@ public class VolumetricLight : MonoBehaviour
 
         _material.SetVector(_ConeApex, new Vector4(apex.x, apex.y, apex.z));
         _material.SetVector(_ConeAxis, new Vector4(axis.x, axis.y, axis.z));
-
-
-
-
 
         bool forceShadowsOff = false;
         if ((_light.transform.position - Camera.current.transform.position).magnitude >= QualitySettings.shadowDistance)
