@@ -49,8 +49,7 @@ Shader "Sandbox/VolumetricLight"
 		#if defined(SHADOWS_DEPTH) || defined(SHADOWS_CUBE)
 		#define SHADOWS_NATIVE
 		#endif
-		
-		#include "UnityCG.cginc"
+		#include "VolumetricShadowLibrary.cginc"
 		#include "UnityDeferredLibrary.cginc"
 
 		sampler3D _NoiseTexture;
@@ -149,15 +148,13 @@ Shader "Sandbox/VolumetricLight"
 #if defined (SHADOWS_DEPTH)
 			// sample cascade shadow map
 			float4 cascadeWeights = GetCascadeWeights_SplitSpheres(wpos);
-			bool inside = dot(cascadeWeights, float4(1, 1, 1, 1)) < 4;
+			float2 weightSum = cascadeWeights.xy + cascadeWeights.zw;
+			weightSum.x += weightSum.y;
+			bool inside = weightSum.x < 4;
 			float4 samplePos = GetCascadeShadowCoord(float4(wpos, 1), cascadeWeights);
 
-			atten = inside ? UNITY_SAMPLE_SHADOW(_CascadeShadowMapTexture, samplePos.xyz) : 1.0f;
+			atten = UNITY_SAMPLE_SHADOW(_CascadeShadowMapTexture, samplePos.xyz) * inside + (1-inside);
 			atten = _LightShadowData.r + atten * (1 - _LightShadowData.r);
-			//atten = inside ? tex2Dproj(_ShadowMapTexture, float4((samplePos).xyz, 1)).r : 1.0f;
-#endif
-#if defined (DIRECTIONAL_COOKIE)
-			// NOT IMPLEMENTED
 #endif
 #elif defined (SPOT)	
 			float3 tolight = _LightPos.xyz - wpos;
@@ -165,6 +162,7 @@ Shader "Sandbox/VolumetricLight"
 
 			float4 uvCookie = mul(_MyLightMatrix0, float4(wpos, 1));
 			// negative bias because http://aras-p.info/blog/2010/01/07/screenspace-vs-mip-mapping/
+			
 			atten = tex2Dbias(_LightTexture0, float4(uvCookie.xy / uvCookie.w, 0, -8)).w;
 			atten *= uvCookie.w < 0;
 			float att = dot(tolight, tolight) * _LightPos.w;
@@ -174,6 +172,7 @@ Shader "Sandbox/VolumetricLight"
 			float4 shadowCoord = mul(_MyWorld2Shadow, float4(wpos, 1));
 			atten *= saturate(UnitySampleShadowmap(shadowCoord));
 #endif
+
 #elif defined (POINT) || defined (POINT_COOKIE)
 			float3 tolight = wpos - _LightPos.xyz;
 			float3 lightDir = -normalize(tolight);
@@ -193,7 +192,7 @@ Shader "Sandbox/VolumetricLight"
         //-----------------------------------------------------------------------------------------
         // ApplyHeightFog
         //-----------------------------------------------------------------------------------------
-        inline void ApplyHeightFog(float3 wpos, inout float density)
+        inline void ApplyHeightFog(float3 wpos, inout float4 density)
         {
             density *= exp(-(wpos.y + _HeightFog.x) * _HeightFog.y);
         }
@@ -204,14 +203,9 @@ Shader "Sandbox/VolumetricLight"
 		float GetDensity(float3 wpos)
 		{
             float density = 1;
-#ifdef NOISE
 			float noise = tex3D(_NoiseTexture, frac(wpos * _NoiseData.x + float3(_Time.y * _NoiseVelocity.x, 0, _Time.y * _NoiseVelocity.y)));
 			noise = saturate(noise - _NoiseData.z) * _NoiseData.y;
 			density = saturate(noise);
-#endif
-#ifdef HEIGHT_FOG
-            ApplyHeightFog(wpos, density);
-#endif
             return density;
 		}        
 
@@ -249,12 +243,13 @@ Shader "Sandbox/VolumetricLight"
 			[loop]
 			for (int i = 0; i < _SampleCount; ++i)
 			{
-				float atten = 1;//GetLightAttenuation(currentPosition);
+				float atten = GetLightAttenuation(currentPosition);
 				float4 light = atten;
 #ifdef NOISE
-#ifdef HEIGHT_FOG
-				light *= GetDensity(currentPosition);
+			light *= GetDensity(currentPosition);
 #endif
+#ifdef HEIGHT_FOG
+		ApplyHeightFog(currentPosition, light);
 #endif
 //#if PHASE_FUNCTOIN
 #if !defined (DIRECTIONAL) && !defined (DIRECTIONAL_COOKIE)
