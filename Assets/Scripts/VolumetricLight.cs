@@ -43,7 +43,7 @@ public class VolumetricLight : MonoBehaviour
     private CommandBuffer _cascadeShadowCommandBuffer;
 
 	public float intensity = 1;
-    [Range(1, 256)]
+    [Range(1, 1024)]
     public int SampleCount = 8;
     [Range(0.0f, 1.0f)]
     public float SkyboxExtinctionCoef = 0.9f;
@@ -313,7 +313,7 @@ public class VolumetricLight : MonoBehaviour
 
 
         _material.SetVector(_LightPos, new Vector4(_light.transform.position.x, _light.transform.position.y, _light.transform.position.z, 1.0f / (_light.range * _light.range)));
-		_material.SetColor(_LightColor, _light.color * _light.intensity * intensity);
+		_material.SetColor(_LightColor, _light.color * _light.intensity * intensity * (1f / SampleCount));
 
         if (_light.cookie != null)
         {
@@ -403,7 +403,7 @@ public class VolumetricLight : MonoBehaviour
         _material.SetMatrix(_WorldViewProj, viewProj * world);
 
         _material.SetVector(_LightPos, new Vector4(_light.transform.position.x, _light.transform.position.y, _light.transform.position.z, 1.0f / (_light.range * _light.range)));
-		_material.SetVector(_LightColor, _light.color * _light.intensity * intensity);
+		_material.SetVector(_LightColor, _light.color * _light.intensity * intensity * (1f / SampleCount));
 
 
         Vector3 apex = transform.position;
@@ -497,7 +497,7 @@ public class VolumetricLight : MonoBehaviour
 
 
         _material.SetVector(_LightDir, new Vector4(_light.transform.forward.x, _light.transform.forward.y, _light.transform.forward.z, 1.0f / (_light.range * _light.range)));
-		_material.SetVector(_LightColor, _light.color * _light.intensity * intensity);
+		_material.SetVector(_LightColor, _light.color * _light.intensity * intensity * (1f / SampleCount));
 
 
         // setup frustum corners for world position reconstruction
@@ -509,15 +509,14 @@ public class VolumetricLight : MonoBehaviour
         _frustumCorners[3] = Camera.current.ViewportToWorldPoint(new Vector3(1, 1, Camera.current.farClipPlane));
         // bottom right
         _frustumCorners[1] = Camera.current.ViewportToWorldPoint(new Vector3(1, 0, Camera.current.farClipPlane));
+        
 	
         _material.SetVectorArray(_FrustumCorners, _frustumCorners);
 
-
-        Texture nullTexture = null;
         if (_light.shadows != LightShadows.None)
         {
             _material.EnableKeyword("SHADOWS_DEPTH");            
-            _commandBuffer.Blit(nullTexture, renderer.volumeLightTexture, _material, pass);
+            _commandBuffer.Blit(null, renderer.volumeLightTexture, _material, pass);
 
             if (CustomRenderEvent != null)
                 CustomRenderEvent(renderer, this, _commandBuffer, viewProj);
@@ -525,7 +524,7 @@ public class VolumetricLight : MonoBehaviour
         else
         {
             _material.DisableKeyword("SHADOWS_DEPTH");
-            renderer.GlobalCommandBuffer.Blit(nullTexture, renderer.volumeLightTexture, _material, pass);
+            renderer.GlobalCommandBuffer.Blit(null, renderer.volumeLightTexture, _material, pass);
 
             if (CustomRenderEvent != null)
                 CustomRenderEvent(renderer, this, renderer.GlobalCommandBuffer, viewProj);

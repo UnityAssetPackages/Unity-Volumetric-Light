@@ -265,6 +265,7 @@ Shader "Sandbox/VolumetricLight"
 				vlight += light;
 				currentPosition += step;				
 			}
+			vlight *= rayLength;
 
 #if defined (DIRECTIONAL) || defined (DIRECTIONAL_COOKIE)
 			// apply phase function for dir light
