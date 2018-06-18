@@ -40,9 +40,8 @@ public class VolumetricLightRenderer : MonoBehaviour
         Full,
         Half,
     };
-
+    public static event Action<VolumetricLightRenderer> onImageEvent;
     public static event Action<VolumetricLightRenderer, Matrix4x4> PreRenderEvent;
-
     private static Mesh _pointLightMesh;
     private static Mesh _spotLightMesh;
     private static Material _lightMaterial;
@@ -342,8 +341,9 @@ public class VolumetricLightRenderer : MonoBehaviour
     [ImageEffectOpaque]
     public void OnRenderImage(RenderTexture source, RenderTexture destination)
     {
+        if(onImageEvent != null)
+        onImageEvent(this);
 		onRenderImageAction ();
-        
         // add volume light buffer to rendered scene
 		_blitAddMaterial.SetTexture(_Source, source);
         Graphics.Blit(_volumeLightTexture, destination, _blitAddMaterial, 0);

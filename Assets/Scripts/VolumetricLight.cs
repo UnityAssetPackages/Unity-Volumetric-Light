@@ -35,8 +35,6 @@ using System;
 [RequireComponent(typeof(Light))]
 public class VolumetricLight : MonoBehaviour 
 {
-    public event Action<VolumetricLightRenderer, VolumetricLight, CommandBuffer, Matrix4x4> CustomRenderEvent;
-
     private Light _light;
     private Material _material;
     private CommandBuffer _commandBuffer;
@@ -72,7 +70,7 @@ public class VolumetricLight : MonoBehaviour
     /// <summary>
     /// 
     /// </summary>
-    void Start() 
+    void Init() 
     {
 
 #if UNITY_5_5_OR_NEWER
@@ -89,7 +87,7 @@ public class VolumetricLight : MonoBehaviour
 
         _cascadeShadowCommandBuffer = new CommandBuffer();
         _cascadeShadowCommandBuffer.name = "Dir Light Command Buffer";
-		_cascadeShadowCommandBuffer.SetGlobalTexture("_CascadeShadowMapTexture", new UnityEngine.Rendering.RenderTargetIdentifier(UnityEngine.Rendering.BuiltinRenderTextureType.CurrentActive));
+		_cascadeShadowCommandBuffer.SetGlobalTexture("_CascadeShadowMapTexture", UnityEngine.Rendering.BuiltinRenderTextureType.CurrentActive);
 
         _light = GetComponent<Light>();
         //_light.RemoveAllCommandBuffers();
@@ -106,14 +104,18 @@ public class VolumetricLight : MonoBehaviour
             throw new Exception("Critical Error: \"Sandbox/VolumetricLight\" shader is missing. Make sure it is included in \"Always Included Shaders\" in ProjectSettings/Graphics.");
         _material = new Material(shader); // new Material(VolumetricLightRenderer.GetLightMaterial());
     }
-
+    private bool isDirectional = false;
     /// <summary>
     /// 
     /// </summary>
     void OnEnable()
     {
-		VolumetricLightRenderer.PreRenderEvent += initSet;
+        isDirectional = _light.type == LightType.Directional;
+        VolumetricLightRenderer.PreRenderEvent += initSet;
         VolumetricLightRenderer.PreRenderEvent += VolumetricLightRenderer_PreRenderEvent;
+        if (isDirectional) {
+            VolumetricLightRenderer.onImageEvent += OnImageEvent;
+        }   
     }
 
     /// <summary>
@@ -122,6 +124,10 @@ public class VolumetricLight : MonoBehaviour
     void OnDisable()
     {
         VolumetricLightRenderer.PreRenderEvent -= VolumetricLightRenderer_PreRenderEvent;
+        if (isDirectional)
+        {
+            VolumetricLightRenderer.onImageEvent -= OnImageEvent;
+        }
     }
 
     /// <summary>
@@ -137,6 +143,7 @@ public class VolumetricLight : MonoBehaviour
 			InitVariable ();
 			inited = true;
 		}
+        Init();
 	}
 
 
@@ -164,6 +171,7 @@ public class VolumetricLight : MonoBehaviour
 	static int _LightDir;
 	static int _MaxRayLength;
 	static int _FrustumCorners;
+    static int _DirectionalLightFlag;
 	static void InitVariable(){
 		_CameraForward = Shader.PropertyToID ("_CameraForward");
 		_SampleCount = Shader.PropertyToID ("_SampleCount");
@@ -189,6 +197,7 @@ public class VolumetricLight : MonoBehaviour
 		_LightDir = Shader.PropertyToID ("_LightDir");
 		_MaxRayLength = Shader.PropertyToID ("_MaxRayLength");
 		_FrustumCorners = Shader.PropertyToID ("_FrustumCorners");
+        _DirectionalLightFlag = Shader.PropertyToID("_DirectionalLightFlag");
 	}
 	bool init = false;
 	/// <summary>
@@ -331,18 +340,12 @@ public class VolumetricLight : MonoBehaviour
             _commandBuffer.SetGlobalTexture(_ShadowMapTexture, BuiltinRenderTextureType.CurrentActive);
 			_commandBuffer.SetRenderTarget(renderer.volumeLightTexture);
 
-            _commandBuffer.DrawMesh(mesh, world, _material, 0, pass);
-
-            if (CustomRenderEvent != null)
-                CustomRenderEvent(renderer, this, _commandBuffer, viewProj);            
+            _commandBuffer.DrawMesh(mesh, world, _material, 0, pass);      
         }
         else
         {
             _material.DisableKeyword("SHADOWS_CUBE");
             renderer.GlobalCommandBuffer.DrawMesh(mesh, world, _material, 0, pass);
-            
-            if (CustomRenderEvent != null)
-                CustomRenderEvent(renderer, this, renderer.GlobalCommandBuffer, viewProj);
         }
     }
 
@@ -441,22 +444,16 @@ public class VolumetricLight : MonoBehaviour
             _material.SetMatrix(_MyWorld2Shadow, m * view);
             _material.SetMatrix(_WorldView, m * view);
 
-            _material.EnableKeyword("SHADOWS_DEPTH");
+            _commandBuffer.EnableShaderKeyword("SHADOWS_DEPTH_ON");
             _commandBuffer.SetGlobalTexture(_ShadowMapTexture, BuiltinRenderTextureType.CurrentActive);
             _commandBuffer.SetRenderTarget(renderer.volumeLightTexture);
 
             _commandBuffer.DrawMesh(mesh, world, _material, 0, pass);
-
-            if (CustomRenderEvent != null)
-                CustomRenderEvent(renderer, this, _commandBuffer, viewProj);       
         }
         else
         {
-            _material.DisableKeyword("SHADOWS_DEPTH");
+            renderer.GlobalCommandBuffer.DisableShaderKeyword("SHADOWS_DEPTH_ON");
             renderer.GlobalCommandBuffer.DrawMesh(mesh, world, _material, 0, pass);
-
-            if (CustomRenderEvent != null)
-                CustomRenderEvent(renderer, this, renderer.GlobalCommandBuffer, viewProj);
         }
     }
 
@@ -482,12 +479,12 @@ public class VolumetricLight : MonoBehaviour
 			_material.SetTexture(_LightTexture0, _light.cookie);
 		}
 	}
-
     /// <summary>
     /// 
     /// </summary>
     /// <param name="renderer"></param>
     /// <param name="viewProj"></param>
+    
     private void SetupDirectionalLight(VolumetricLightRenderer renderer, Matrix4x4 viewProj)
     {
         _commandBuffer.Clear();
@@ -515,19 +512,22 @@ public class VolumetricLight : MonoBehaviour
 
         if (_light.shadows != LightShadows.None)
         {
-            _material.EnableKeyword("SHADOWS_DEPTH");            
+            _commandBuffer.SetGlobalFloat(_DirectionalLightFlag, 1);
+            
+            _commandBuffer.EnableShaderKeyword("SHADOWS_DEPTH_ON");            
             _commandBuffer.Blit(null, renderer.volumeLightTexture, _material, pass);
+        }
+    }
 
-            if (CustomRenderEvent != null)
-                CustomRenderEvent(renderer, this, _commandBuffer, viewProj);
+    private void OnImageEvent(VolumetricLightRenderer renderer) {
+        if (Shader.GetGlobalFloat(_DirectionalLightFlag) < 0.5f)
+        {
+            Graphics.Blit(null, renderer.volumeLightTexture, _material, 4);
         }
         else
         {
-            _material.DisableKeyword("SHADOWS_DEPTH");
-            renderer.GlobalCommandBuffer.Blit(null, renderer.volumeLightTexture, _material, pass);
-
-            if (CustomRenderEvent != null)
-                CustomRenderEvent(renderer, this, renderer.GlobalCommandBuffer, viewProj);
+            Shader.SetGlobalFloat(_DirectionalLightFlag, 0);
+            Shader.DisableKeyword("SHADOWS_DEPTH_ON");
         }
     }
 

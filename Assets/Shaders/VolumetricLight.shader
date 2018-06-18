@@ -46,8 +46,8 @@ Shader "Sandbox/VolumetricLight"
 
 		CGINCLUDE
 
-		#if defined(SHADOWS_DEPTH) || defined(SHADOWS_CUBE)
-		#define SHADOWS_NATIVE
+		#if SHADOWS_DEPTH || defined(SHADOWS_CUBE)
+		
 		#endif
 		#include "VolumetricShadowLibrary.cginc"
 		#include "UnityDeferredLibrary.cginc"
@@ -145,7 +145,7 @@ Shader "Sandbox/VolumetricLight"
 			float atten = 0;
 #if defined (DIRECTIONAL) || defined (DIRECTIONAL_COOKIE)
 			atten = 1;
-#if defined (SHADOWS_DEPTH)
+#if SHADOWS_DEPTH_ON
 			// sample cascade shadow map
 			float4 cascadeWeights = GetCascadeWeights_SplitSpheres(wpos);
 			float2 weightSum = cascadeWeights.xy + cascadeWeights.zw;
@@ -168,7 +168,7 @@ Shader "Sandbox/VolumetricLight"
 			float att = dot(tolight, tolight) * _LightPos.w;
 			atten *= tex2D(_LightTextureB0, att.rr).UNITY_ATTEN_CHANNEL;
 
-#if defined(SHADOWS_DEPTH)
+#if SHADOWS_DEPTH_ON
 			float4 shadowCoord = mul(_MyWorld2Shadow, float4(wpos, 1));
 			atten *= saturate(UnitySampleShadowmap(shadowCoord));
 #endif
@@ -353,7 +353,7 @@ Shader "Sandbox/VolumetricLight"
 			#pragma shader_feature POINT
 
 			#ifdef SHADOWS_DEPTH
-			#define SHADOWS_NATIVE
+			
 			#endif
 						
 			
@@ -398,11 +398,11 @@ Shader "Sandbox/VolumetricLight"
 
 #pragma shader_feature HEIGHT_FOG
 #pragma shader_feature NOISE
-#pragma shader_feature SHADOWS_DEPTH
+#pragma multi_compile SHADOWS_DEPTH_OFF SHADOWS_DEPTH_ON
 #pragma shader_feature SPOT
 
 #ifdef SHADOWS_DEPTH
-#define SHADOWS_NATIVE
+
 #endif
 
 			float4 fragPointInside(v2f i) : SV_Target
@@ -505,12 +505,12 @@ Shader "Sandbox/VolumetricLight"
 			#define UNITY_HDR_ON
 
 			#pragma shader_feature HEIGHT_FOG
-			#pragma shader_feature SHADOWS_DEPTH
+			#pragma multi_compile SHADOWS_DEPTH_OFF SHADOWS_DEPTH_ON
 			#pragma shader_feature NOISE
 			#pragma shader_feature SPOT
 
 			#ifdef SHADOWS_DEPTH
-			#define SHADOWS_NATIVE
+			
 			#endif
 			
 			float _CosAngle;
@@ -560,7 +560,7 @@ Shader "Sandbox/VolumetricLight"
 			ZTest Off
 			Cull Off
 			ZWrite Off
-			Blend One One, One Zero
+			Blend one one
 
 			CGPROGRAM
 
@@ -572,12 +572,12 @@ Shader "Sandbox/VolumetricLight"
 
 			#pragma shader_feature HEIGHT_FOG
 			#pragma shader_feature NOISE
-			#pragma shader_feature SHADOWS_DEPTH
+			#pragma multi_compile SHADOWS_DEPTH_OFF SHADOWS_DEPTH_ON
 			#pragma shader_feature DIRECTIONAL_COOKIE
 			#pragma shader_feature DIRECTIONAL
 
 			#ifdef SHADOWS_DEPTH
-			#define SHADOWS_NATIVE
+			
 			#endif
 
 			struct VSInput
